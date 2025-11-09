@@ -10,8 +10,7 @@ is available.
 
 ## Authors
 
-Marc Brandt\
-Hochschule für Polizei Baden-Württemberg
+Marc Brandt\ mb4n6
 
 ------------------------------------------------------------------------
 
