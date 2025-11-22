@@ -10,7 +10,7 @@ try:
         QTextEdit, QLabel, QCheckBox, QWidget, QMessageBox, QDialog, QDialogButtonBox
     )
     from PySide6.QtCore import Qt
-    from PySide6.QtGui import QAction
+    from PySide6.QtGui import QAction, QColor, QFont
 except Exception as e:
     print("ERROR: PySide6 konnte nicht geladen werden:", e)
     print("Installiere mit: pip install PySide6")
@@ -109,7 +109,7 @@ def parse_message(buf: bytes, off: int = 0, length: int = None, nested: bool = T
                 "wireType": wire_type,
                 "keyOffset": start,
             }
-            if wire_type == 0:  # varint
+            if wire_type == 0:
                 v, i2 = read_varint(buf, i)
                 entry["byteRange"] = (start, i2)
                 entry["type"] = "varint"
@@ -117,15 +117,15 @@ def parse_message(buf: bytes, off: int = 0, length: int = None, nested: bool = T
                 entry["uint"] = v
                 entry["sint"] = zigzag_decode(v)
                 i = i2
-            elif wire_type == 1:  # 64-bit
+            elif wire_type == 1:
                 u64, f64, i2 = read_fixed64(buf, i)
                 entry["byteRange"] = (start, i2)
                 entry["type"] = "fixed64"
                 entry["u64"] = u64
                 entry["double"] = f64
-                entry["valueBytes"] = buf[i:i2]  # 8 bytes payload
+                entry["valueBytes"] = buf[i:i2]
                 i = i2
-            elif wire_type == 2:  # length-delimited
+            elif wire_type == 2:
                 L, i2 = read_varint(buf, i)
                 payload = buf[i2:i2+L]
                 entry["byteRange"] = (start, i2 + L)
@@ -142,13 +142,13 @@ def parse_message(buf: bytes, off: int = 0, length: int = None, nested: bool = T
                     except Exception:
                         pass
                 i = i2 + L
-            elif wire_type == 5:  # 32-bit
+            elif wire_type == 5:
                 u32, f32, i2 = read_fixed32(buf, i)
                 entry["byteRange"] = (start, i2)
                 entry["type"] = "fixed32"
                 entry["u32"] = u32
                 entry["float"] = f32
-                entry["valueBytes"] = buf[i:i2]  # 4 bytes
+                entry["valueBytes"] = buf[i:i2]
                 i = i2
             else:
                 ok = False
@@ -179,10 +179,10 @@ Feldschlüssel (Key)
 Jedes Feld beginnt mit einem Varint-Key:
 key = (field_number << 3) | wire_type
 Wire Types:
-- 0 VARINT (z. B. int32, int64, bool, enum, sint32/sint64 via ZigZag)
-- 1 FIXED64 (64-Bit, z. B. double, fixed64, sfixed64)
-- 2 LENGTH_DELIMITED (Prefix-Varint + Payload; z. B. string, bytes, embedded message, packed repeated)
-- 5 FIXED32 (32-Bit, z. B. float, fixed32, sfixed32)
+- 0 VARINT (z. B. int32, int64, bool, enum, sint32/sint64 via ZigZag)
+- 1 FIXED64 (64-Bit, z. B. double, fixed64, sfixed64)
+- 2 LENGTH_DELIMITED (Prefix-Varint + Payload; z. B. string, bytes, embedded message, packed repeated)
+- 5 FIXED32 (32-Bit, z. B. float, fixed32, sfixed32)
 
 Varint & ZigZag
 - Varint kodiert ganzzahlige Werte in 7-Bit-Chunks (LSB-first), MSB=1 zeigt an, dass weitere Bytes folgen.
@@ -203,40 +203,11 @@ Sicherheit
 - Länge prüfen (len), defensive Parses, Maximalgrößen setzen (DoS vermeiden).
 """
 
-def render_nested_text(msg: Dict[str, Any], indent: int = 0) -> str:
-    pad = "  " * indent
-    lines = [f"{pad}Nested message: {len(msg.get('fields', []))} field(s)"]
-    wname = {0:"VARINT",1:"FIXED64",2:"LENGTH_DELIM",5:"FIXED32"}
-    for f in msg.get("fields", []):
-        wt = wname.get(f.get("wireType"), f"WT_{f.get('wireType')}")
-        br = f.get("byteRange")
-        br_txt = f"{br[0]}–{br[1]}" if br else "—"
-        line = f"{pad}- Field {f.get('fieldNumber')} [{wt}] bytes={br_txt}: "
-        if f.get("type") == "varint":
-            line += f"uint={f.get('uint')} / sint={f.get('sint')}"
-        elif f.get("type") == "fixed64":
-            line += f"uint64={f.get('u64')} / double={f.get('double')}"
-        elif f.get("type") == "fixed32":
-            line += f"uint32={f.get('u32')} / float={f.get('float')}"
-        elif f.get("type") == "length_delimited":
-            if isinstance(f.get("string"), str):
-                line += f"STRING {repr(f.get('string'))}"
-            else:
-                line += f"BYTES len={len(f.get('valueBytes') or b'')}"
-            lines.append(line)
-            if f.get("nested"):
-                lines.append(render_nested_text(f["nested"], indent+1))
-            continue
-        else:
-            line += f.get('type') or ''
-        lines.append(line)
-    return "\n".join(lines)
-
 class ProtoViewer(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Protobuf Viewer – Python GUI")
-        self.resize(1280, 820)
+        self.setWindowTitle("Protobuf Viewer – Python GUI (Improved)")
+        self.resize(1400, 820)
 
         m_file = self.menuBar().addMenu("&File")
         act_open = QAction("Open File…", self); act_open.triggered.connect(self.open_file)
@@ -267,8 +238,8 @@ class ProtoViewer(QMainWindow):
         left_layout.addWidget(QLabel("Quick Hex View"))
         left_layout.addWidget(self.quick, 1)
 
-        self.table = QTableWidget(0, 6)
-        self.table.setHorizontalHeaderLabels(["Field", "Wire Type", "Byte Range", "Bytes (Hex)", "ASCII", "Content"])
+        self.table = QTableWidget(0, 4)
+        self.table.setHorizontalHeaderLabels(["Byte Range", "Field Number", "Type", "Content"])
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setWordWrap(True)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
@@ -298,9 +269,10 @@ class ProtoViewer(QMainWindow):
         self.current_frames: List[Dict[str, Any]] = []
         self.row_to_bytes: Dict[int, bytes] = {}
 
-        self.table.setColumnWidth(3, 200)  # Bytes (Hex)
-        self.table.setColumnWidth(4, 320)  # ASCII
-        self.table.setColumnWidth(5, 480)  # Content
+        self.table.setColumnWidth(0, 100)
+        self.table.setColumnWidth(1, 100)
+        self.table.setColumnWidth(2, 120)
+        self.table.setColumnWidth(3, 800)
 
     def show_primer(self):
         dlg = QDialog(self)
@@ -350,54 +322,94 @@ class ProtoViewer(QMainWindow):
         self.table.setRowCount(0)
         self.row_to_bytes.clear()
         row = 0
-        wname = {0:"VARINT",1:"FIXED64",2:"LENGTH_DELIM",5:"FIXED32"}
+        wname = {0:"varint", 1:"fixed64", 2:"length_delimited", 5:"fixed32"}
+        
         for frame in frames:
-            for f in frame.get("fields", []):
-                self.table.insertRow(row)
-                wt = f.get("wireType")
-                wt_name = wname.get(wt, f"WT_{wt}")
-                br = f.get("byteRange"); br_txt = f"{br[0]}–{br[1]}" if br else "—"
-                payload: bytes = f.get("valueBytes") or b""
-
-                inline_hex = bytes_to_hex(payload[:64])   # keep hex compact
-                full_ascii = ascii_preview(payload)       # FULL ascii 
-                content = self.build_content_text(f, payload)  # FULL content 
-
-                items = [
-                    QTableWidgetItem(str(f.get("fieldNumber",""))),
-                    QTableWidgetItem(wt_name),
-                    QTableWidgetItem(br_txt),
-                    QTableWidgetItem(inline_hex),
-                    QTableWidgetItem(full_ascii),
-                    QTableWidgetItem(content)
-                ]
-                for col,it in enumerate(items):
-                    it.setFlags(it.flags() ^ Qt.ItemIsEditable)
-                    self.table.setItem(row, col, it)
-
-                self.row_to_bytes[row] = payload
-                row += 1
+            row = self.add_fields_to_table(frame.get("fields", []), row, indent_level=0)
 
         self.table.resizeRowsToContents()
 
-    def build_content_text(self, f: Dict[str, Any], payload: bytes) -> str:
+    def add_fields_to_table(self, fields: List[Dict[str, Any]], start_row: int, indent_level: int = 0) -> int:
+        row = start_row
+        wname = {0:"varint", 1:"fixed64", 2:"length_delimited", 5:"fixed32"}
+        
+        for f in fields:
+            self.table.insertRow(row)
+            
+            wt = f.get("wireType")
+            wt_name = wname.get(wt, f"WT_{wt}")
+            br = f.get("byteRange")
+            br_txt = f"{br[0]}-{br[1]}" if br else "—"
+            payload: bytes = f.get("valueBytes") or b""
+            
+            content = self.build_content_text(f, payload, include_nested=False)
+            
+            indent_prefix = "    " * indent_level
+            
+            item_br = QTableWidgetItem(br_txt)
+            item_fn = QTableWidgetItem(indent_prefix + str(f.get("fieldNumber", "")))
+            item_type = QTableWidgetItem(wt_name)
+            item_content = QTableWidgetItem(content)
+            
+            if indent_level > 0:
+                bg_colors = [
+                    QColor(240, 248, 255),
+                    QColor(245, 245, 245),
+                    QColor(250, 250, 250),
+                ]
+                bg_color = bg_colors[min(indent_level - 1, len(bg_colors) - 1)]
+                
+                for item in [item_br, item_fn, item_type, item_content]:
+                    item.setBackground(bg_color)
+                
+                font = QFont()
+                font.setBold(True)
+                item_fn.setFont(font)
+            
+            for item in [item_br, item_fn, item_type, item_content]:
+                item.setFlags(item.flags() ^ Qt.ItemIsEditable)
+            
+            self.table.setItem(row, 0, item_br)
+            self.table.setItem(row, 1, item_fn)
+            self.table.setItem(row, 2, item_type)
+            self.table.setItem(row, 3, item_content)
+            
+            self.row_to_bytes[row] = payload
+            row += 1
+            
+            if f.get("nested"):
+                nested_fields = f["nested"].get("fields", [])
+                if nested_fields:
+                    row = self.add_fields_to_table(nested_fields, row, indent_level + 1)
+        
+        return row
+
+    def build_content_text(self, f: Dict[str, Any], payload: bytes, include_nested: bool = True) -> str:
         t = f.get("type")
         if t == "varint":
-            return f"as uint: {f.get('uint')} | as sint: {f.get('sint')}"
+            return f"As uint: {f.get('uint')} | As sint: {f.get('sint')}"
         if t == "fixed64":
-            return f"as uint64: {f.get('u64')} | as double: {f.get('double')}"
+            return f"As uint64: {f.get('u64')} | As double: {f.get('double')}"
         if t == "fixed32":
-            return f"as uint32: {f.get('u32')} | as float: {f.get('float')}"
+            return f"As uint32: {f.get('u32')} | As float: {f.get('float')}"
 
         if t == "length_delimited":
             parts = []
+            
             if isinstance(f.get("string"), str):
-                parts.append(f"STRING: {f.get('string','')}")
+                s = f.get('string', '')
+                parts.append(f"STRING: {s}")
+            
             if f.get("nested"):
-                parts.append(render_nested_text(f["nested"]))
+                nested = f["nested"]
+                num_fields = len(nested.get("fields", []))
+                parts.append(f"Nested message: {num_fields} field(s)")
+            
             if not parts:
-                parts.append(f"BYTES: {bytes_to_hex(payload)}")
-            return "\n".join(parts)
+                hex_str = bytes_to_hex(payload)
+                parts.append(f"BYTES ({len(payload)}): {hex_str}")
+            
+            return " | ".join(parts)
 
         return t or ""
 
